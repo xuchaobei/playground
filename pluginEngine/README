@@ -1,0 +1,55 @@
+基本流程：
+asyncHooks 保存 container，container 数据结构中存储 context（可以是多个）。
+Manager init 时，创建一个 container，这个 container 会传递给 Hook 模型（通过调用 Runtime.run(fn,_container)），然后所有的 Hook 钩子函数都利用这个 container 保存 context。
+在 Hook 钩子函数内，调用 context.get 或 set 时，都会通过这个 container(Runtime.container.use()) 获取或设置 container 中的 context。
+
+
+AsyncHooks  异步调用栈之间的数据共享
+
+store <asyncId, Container> 保存不同调用栈上的对象
+asyncHooks = {
+  init: 把上一个调用栈 triggerAsyncId 保存的对象，存储到当前 asyncId 上
+  destroy: 当前调用栈结束后，从 store 中移除当前调用栈保存的上一个调用栈的数据
+}
+get  获取当前调用栈存储的数据，可能来源于上一个调用栈的共享数据，也可能是当前调用栈通过 set 方法设置的数据
+set  设置当前调用栈存储的数据。只需要在顶层调用栈调用，当发生异步调用时，asyncHooks.init 会自动把数据同步到下一个调用栈。
+    （如果在下一个调用栈又调用了set，需要自己做merge处理，否则会覆盖上一个调用栈的数据！！）
+
+
+
+Container  保存共享数据的容器
+
+store
+read(context)  从 store 中取出 context
+write(context, data)   将 context 保存到 store
+
+
+Context 真正的共享数据
+
+get()   根据container，获取对应的共享数据
+set(value)  将数据保存到某个 container 下
+Context 关联的 container 并不是通过参数传递进去的，从何而来？这就依赖运行时对象的创建，即 Runtime 中的 container.use() 方法获取。
+
+
+
+Runtime 设置和获取当前调用栈中保存的 Container。是 Context 和 插件钩子模型（如Pipeline） 的桥梁。
+        当需要设置调用栈共享的数据时（Pipeline中），通过 run 方法设置共享数据所在的 container，
+        当需要获取共享数据时（具体的插件钩子函数中context.get()），通过 use 方法获取当前 container，进而获取 context 数据，从而完成跨调用栈的数据共享
+
+currentContainer  当前调用栈关联的 container
+container = {
+  use: 返回 currentContainer || asyncHooks.get()，否则抛出 Error。
+       第一次调用时，需要保证 AsyncHooks.set 已经调用过，把 container 关联到当前调用栈了。
+       如何保证的呢？ 在插件钩子模型中， 如 pipeline ， 会调用 Runtime 的 run 方法，把 Manager 中创建的 container 传递到 hooks 方法中， container 就关联到当前 hooks 方法运行的调用栈上了
+}
+run(fn, _container): 保证 fn 在执行前，_container 会通过 AsyncHooks 中的 set 方法进行存储。
+
+
+
+Manager
+init 创建一个新的 container，调用每个 hook 函数时，会传入这个 container，保证在 hook 中获取到正确的 Context
+
+
+
+Pipeline
+hook 执行前，通过 Runtime 的 run 方法，把 container 保存到 asyncHooks。

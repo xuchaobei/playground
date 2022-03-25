@@ -32,6 +32,7 @@ export const createManager = (processes) => {
         processes[hook](param, { container, ...options });
     }
 
+    // RunnerContext.set(runner);  这里 context 和 container（useContainer） 并没有关联，因此不像在 hook 函数中，可以直接使用 context.set。需要通过下一行代码设置context
     container.write(RunnerContext, runner);
 
     return runner; // 驱动插件hook 函数执行的方法
@@ -50,6 +51,7 @@ export const useRunner = () => {
   return runner;
 };
 
+// 钩子函数异步场景
 async function test() {
   // const foo = {
   //   add: (param) => {
@@ -149,7 +151,9 @@ async function test() {
   disable();
 }
 
-function test2() {
+// 钩子函数同步场景
+async function test2() {
+  // enable(); 可以不用开启 asyncHooks
   const context0 = createContext(0);
   const context1 = createContext({ count: 1 });
 
@@ -181,9 +185,9 @@ function test2() {
 
   const runner = manager.init();
 
-  const calcResult = runner.calc(1);
+  const calcResult = await runner.calc(1);
   console.log(calcResult);
 }
 
 // test();
-// test2();
+test2();
